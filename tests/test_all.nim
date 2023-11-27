@@ -1,8 +1,10 @@
 import std/[sugar, os, strutils]
 import wafli
-import wafli/dom
+import ./common
 
-let components = static:
+enableBootstrap()
+
+const testFileNames = static:
   var r = newSeq[string]()
   for file in walkDir(currentSourcePath.parentDir(), checkDir=true):
     let n = file.path.extractFileName()
@@ -11,7 +13,7 @@ let components = static:
   r
 
 component Main:
-  var selection = writable(components[0])
+  var selection = writable(testFileNames[0])
   let currentTest = derived(^selection & ".html")
 
   cssStr """
@@ -37,7 +39,7 @@ component Main:
         span class="fs-4": "Tests and examples"
         hr
         ul class="nav nav-pills flex-column mb-auto":
-          for c in (components):
+          for c in (testFileNames):
             li:
               a href="#", class="nav-link active", class("active")=^(^selection == c), click=(() => selection %= c):
                 text c
@@ -45,14 +47,3 @@ component Main:
       iframe width="100%", src=^currentTest
 
 renderMain(Main)
-
-component Head:
-  html:
-    link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css", rel="stylesheet",
-        integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN", crossorigin="anonymous"
-    script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js",
-        integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r", crossorigin="anonymous"
-    script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js",
-        integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL", crossorigin="anonymous"
-
-renderMain(Head, document().head)
