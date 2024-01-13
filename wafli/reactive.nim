@@ -187,7 +187,7 @@ template findIt[T](v: openarray[T], predicate: untyped): int =
 template getImplBase(r: Reactive|Writable): ReactiveImplBase = r.impl
 
 proc replaceSourcesWithDefault(n: NimNode, res: var seq[NimNode]): NimNode =
-  if n.kind == nnkPrefix and n.len == 2 and n[0].kind in {nnkIdent, nnkSym} and $n[0] == "^":
+  if n.kind == nnkPrefix and n.len == 2 and n[0].kind in {nnkIdent, nnkSym} and $n[0] in ["^", "@^"]:
     let name = n[1]
     var i = findIt(res, it == name)
     if i < 0:
