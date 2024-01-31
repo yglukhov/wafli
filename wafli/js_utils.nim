@@ -71,3 +71,19 @@ proc emptyJSArray*(): JSObj {.importwasmp: "[]".}
 proc emptyJSObject*(): JSObj {.importwasmp: "{}".}
 proc push*(o, v: JSObj) {.importwasmm.}
 proc jsStr*(a: cstring): JSObj {.importwasmp: "_nimsj($0)".}
+
+proc setIntervalAux(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObj {.importwasmraw: """
+return _nimok(setInterval(() => {_nime._dvi($1, $2)}, $0))
+""".}
+
+proc setTimeoutAux(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObj {.importwasmraw: """
+return _nimok(setTimeout(() => {_nime._dvi($1, $2)}, $0))
+""".}
+
+proc setInterval*(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObj {.inline.} =
+  defineDyncall("vi")
+  setIntervalAux(ms, cb, ctx)
+
+proc setTimeout*(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObj {.inline.} =
+  defineDyncall("vi")
+  setTimeoutAux(ms, cb, ctx)
