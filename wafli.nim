@@ -253,6 +253,13 @@ proc processForStmt(n, parentId: NimNode, idCounter: var int, res, component, do
     `prcId`()
     `component`.subscriptions.add `condId`.subscribe(`prcId`)
 
+proc processWhenStmt(n, parentId: NimNode, idCounter: var int, res, component, document: NimNode) =
+  for c in n:
+    var s = newNimNode(nnkStmtList)
+    processHtmlElements(c[^1], parentId, idCounter, s, component, document)
+    c[^1] = s
+  res.add(n)
+
 type
   AttrKind = enum
     setOnce
@@ -426,6 +433,8 @@ proc processHtmlElements(n, parentId: NimNode, idCounter: var int, res, componen
       processForStmt(c, parentId, idCounter, res, component, document)
     of nnkDiscardStmt:
       discard
+    of nnkWhenStmt:
+      processWhenStmt(c, parentId, idCounter, res, component, document)
     else:
       echo treeRepr c
       assert(false, "unknown html node")
