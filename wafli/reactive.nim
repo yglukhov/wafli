@@ -1,12 +1,16 @@
 import macros
 import yasync
 
+const debugReactive = not defined(release)
+
 type
   ReactiveImplBase = ref object of RootObj
     refCount: int = 1
     destinations: seq[ReactiveImplBase]
     sources: seq[ReactiveImplBase]
     update: proc(r: ReactiveImplBase) {.gcsafe, nimcall.}
+    when debugReactive:
+      expression: cstring
 
   ReactiveImpl[T] = ref object of ReactiveImplBase
     value: T
@@ -78,8 +82,21 @@ proc trigger(r: ReactiveImplBase) {.gcsafe.} =
   for d in dest:
     let u = d.update
     if not u.isNil:
-      u(d)
-      trigger(d)
+      var ok = false
+      try:
+        u(d)
+        ok = true
+      except Exception as e:
+        when not defined(release):
+          when debugReactive:
+            echo "Exception caught while updating reactive ", d.expression
+          else:
+            echo "Exception caught while updating reactive"
+
+          echo e.msg
+          echo e.getStackTrace()
+      if ok:
+        trigger(d)
 
 proc `%=`*[T](r: var Writable[T], v: T) =
   assert(r.impl != nil)
@@ -132,13 +149,15 @@ proc updateReal[T](r: ReactiveImplBase) =
   let r = cast[ReactiveImpl[T]](r)
   r.value = r.updateAux(r.sources)
 
-proc derivedAux[T](sources: openarray[ReactiveImplBase], cb: proc(s: openarray[ReactiveImplBase]): T {.gcsafe.}): Reactive[T] =
+proc derivedAux[T](expression: cstring, sources: openarray[ReactiveImplBase], cb: proc(s: openarray[ReactiveImplBase]): T {.gcsafe.}): Reactive[T] =
   let impl = ReactiveImpl[T](sources: @sources)
   for s in sources:
     s.destinations.add(impl)
     inc s.refCount
   impl.updateAux = cb
   impl.update = updateReal[T]
+  when debugReactive:
+    impl.expression = expression
   updateReal[T](impl)
   Reactive[T](impl: impl)
 
@@ -151,30 +170,37 @@ type
   ReactiveImplAsync[T] = ref object of ReactiveImpl[T]
     future: FutureBase
 
-proc derivedAsyncAux[T](sources: openarray[ReactiveImplBase], cb: proc(s: openarray[ReactiveImplBase]): Future[T] {.gcsafe.}): Reactive[T] =
-  let impl = ReactiveImplAsync[T](sources: @sources)
+type
+  AsyncResult*[T] = object
+    value*: T
+    loaded*: bool
+
+proc derivedAsyncAux[T](expression: cstring, sources: openarray[ReactiveImplBase], cb: proc(s: openarray[ReactiveImplBase]): Future[T] {.gcsafe.}): Reactive[AsyncResult[T]] =
+  let impl = ReactiveImplAsync[AsyncResult[T]](sources: @sources)
+  when debugReactive:
+    impl.expression = expression
   for s in sources:
     s.destinations.add(impl)
     inc s.refCount
-  impl.updateAux = proc(s: openarray[ReactiveImplBase]): T =
+  impl.updateAux = proc(s: openarray[ReactiveImplBase]): AsyncResult[T] =
     let f = cb(s)
     if f.finished:
       if not f.error.isNil:
         dumpError(f.error)
       else:
-        return f.result
+        return AsyncResult[T](loaded: true, value: f.result)
     else:
       impl.future = f
       f.then() do(v: T, error: ref Exception) {.gcsafe.}:
         if impl.future == f:
-          impl.value = v
+          impl.value = AsyncResult[T](loaded: true, value: v)
           trigger(impl)
           if not error.isNil:
             dumpError(error)
           impl.future = nil
-  impl.update = updateReal[T]
-  updateReal[T](impl)
-  Reactive[T](impl: impl)
+  impl.update = updateReal[AsyncResult[T]]
+  updateReal[AsyncResult[T]](impl)
+  Reactive[AsyncResult[T]](impl: impl)
 
 template findIt[T](v: openarray[T], predicate: untyped): int =
   var res = -1
@@ -215,16 +241,24 @@ proc parseDerived(a: NimNode): tuple[sourceImpls, closureBody: NimNode] =
   closureBody.add(body)
   (sourceImpls, closureBody)
 
+template astToOrigin(n: untyped): cstring =
+  when debugReactive:
+    cstring(astToStr(n))
+  else:
+    cstring(nil)
+
 macro derived*(a: untyped): untyped =
+  let aCopy = copyNimTree(a)
   let (sourceImpls, closureBody) = parseDerived(a)
   result = quote do:
-    derivedAux(`sourceImpls`) do(reactiveInput_769 {.inject.}: openarray[ReactiveImplBase]) -> auto {.gcsafe.}:
+    derivedAux(astToOrigin(`aCopy`), `sourceImpls`) do(reactiveInput_769 {.inject.}: openarray[ReactiveImplBase]) -> auto {.gcsafe.}:
       `closureBody`
 
 macro derivedAsync*(a: untyped): untyped =
+  let aCopy = copyNimTree(a)
   let (sourceImpls, closureBody) = parseDerived(a)
   result = quote do:
-    derivedAsyncAux(`sourceImpls`) do(reactiveInput_769 {.inject.}: openarray[ReactiveImplBase]) -> auto {.gcsafe.}:
+    derivedAsyncAux(astToOrigin(`aCopy`), `sourceImpls`) do(reactiveInput_769 {.inject.}: openarray[ReactiveImplBase]) -> auto {.gcsafe.}:
       `closureBody`
 
 converter toValue*[T](r: Reactive[T]): T {.inline.} = r.value
