@@ -87,3 +87,8 @@ proc setInterval*(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): J
 proc setTimeout*(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObj {.inline.} =
   defineDyncall("vi")
   setTimeoutAux(ms, cb, ctx)
+
+proc toFixedAux(f: float64, d: int32): JSObj {.importwasmm: "toFixed".}
+
+proc toFixed*(f: float, numDecimals: int): string {.inline.} = jsStringToStr(toFixedAux(f, numDecimals.int32))
+
