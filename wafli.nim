@@ -494,7 +494,9 @@ proc makeExtractEnvTypeFunc(name: NimNode, body: NimNode, vars: seq[VarDef]): Ni
     proc getBodyTypeFunc(): auto =
       template html(b: untyped) {.used, inject.} = discard
       template cssStr(b: untyped) {.used, inject.} = discard
+      {.push used.}
       `body`
+      {.pop.}
       `typ`
       return `name`()
 
