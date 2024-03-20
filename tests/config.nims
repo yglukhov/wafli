@@ -9,11 +9,9 @@ when defined(wasm):
   --d:release
   --nomain
   --opt:size
-  # --listCmd
   --stackTrace:off
   --d:noSignalHandler
   --exceptions:goto
-  --app:lib
   --d:nimPreviewFloatRoundtrip # Avoid using sprintf as it's not available in wasm
 
   let llTarget = "wasm32-unknown-unknown"
@@ -26,7 +24,7 @@ when defined(wasm):
   switch("passC", "-flto") # Important for code size!
 
   # gc-sections seems to not have any effect
-  var linkerOptions = "-nostdlib -Wl,--no-entry,--allow-undefined,--export-dynamic,--gc-sections,--strip-all"
+  var linkerOptions = "-nostdlib -Wl,--no-entry,--allow-undefined,--gc-sections,--strip-all"
 
   switch("clang.options.linker", linkerOptions)
   switch("clang.cpp.options.linker", linkerOptions)
