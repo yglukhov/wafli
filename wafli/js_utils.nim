@@ -3,8 +3,8 @@ import wasmrt
 proc log*(s: cstring, o: JSObj) {.importwasmf: "console.log".}
 
 proc length*(j: JSObj): int {.importwasmp.}
-proc strWriteOut(j: JSObj, p: pointer, len: int): int {.importwasmraw: """
-return new TextEncoder().encodeInto(_nimo[$0], new Uint8Array(_nima.buffer, $1, $2)).written
+proc strWriteOut(j: JSObj, p: pointer, len: int): int {.importwasmexpr: """
+new TextEncoder().encodeInto(_nimo[$0], new Uint8Array(_nima.buffer, $1, $2)).written
 """.}
 
 proc jsStringToStr*(v: JSObj): string =
@@ -15,7 +15,7 @@ proc jsStringToStr*(v: JSObj): string =
       let actualSz = strWriteOut(v, addr result[0], sz)
       result.setLen(actualSz)
 
-proc setProp(n: JSObj, kIsStr: bool, k: pointer, vIsStr: bool, v: pointer) {.importwasmraw: """
+proc setProp(n: JSObj, kIsStr: bool, k: pointer, vIsStr: bool, v: pointer) {.importwasmexpr: """
 _nimo[$0][$1?_nimsj($2):$2] = $3?_nimsj($4):$4
 """.}
 
@@ -31,7 +31,7 @@ proc setProperty*(n: JSObj, k: int, v: cstring) {.inline.} =
 proc setProperty*(n: JSObj, k: int, v: int32) {.inline.} =
   setProp(n, false, cast[pointer](k), false, cast[pointer](v))
 
-proc setProp(n: JSObj, kIsString: bool, k: pointer, v: JSObj) {.importwasmraw: """
+proc setProp(n: JSObj, kIsString: bool, k: pointer, v: JSObj) {.importwasmexpr: """
 _nimo[$0][$1?_nimsj($2):$2] = _nimo[$3]
 """}
 
@@ -41,12 +41,12 @@ proc setProperty*(n: JSObj, k: cstring, v: JSObj) {.inline.} =
 proc setProperty*(n: JSObj, k: int, v: JSObj) {.inline.} =
   setProp(n, false, cast[pointer](k), v)
 
-proc getIntProperty(n: JSObj, isStr: bool, k: pointer): int32 {.importwasmraw: """
-return _nimo[$0][$1?_nimsj($2):$2]
+proc getIntProperty(n: JSObj, isStr: bool, k: pointer): int32 {.importwasmexpr: """
+_nimo[$0][$1?_nimsj($2):$2]
 """.}
 
-proc getObjProperty(n: JSObj, isStr: bool, k: pointer): JSObj {.importwasmraw: """
-return _nimok(_nimo[$0][$1?_nimsj($2):$2])
+proc getObjProperty(n: JSObj, isStr: bool, k: pointer): JSObj {.importwasmexpr: """
+_nimo[$0][$1?_nimsj($2):$2]
 """.}
 
 proc getIntProperty*(n: JSObj, idx: int32): int32 {.inline.} =
@@ -72,12 +72,12 @@ proc emptyJSObject*(): JSObj {.importwasmp: "{}".}
 proc push*(o, v: JSObj) {.importwasmm.}
 proc jsStr*(a: cstring): JSObj {.importwasmp: "_nimsj($0)".}
 
-proc setIntervalAux(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObj {.importwasmraw: """
-return _nimok(setInterval(() => {_nime._dvi($1, $2)}, $0))
+proc setIntervalAux(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObj {.importwasmexpr: """
+setInterval(() => {_nime._dvi($1, $2)}, $0)
 """.}
 
-proc setTimeoutAux(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObj {.importwasmraw: """
-return _nimok(setTimeout(() => {_nime._dvi($1, $2)}, $0))
+proc setTimeoutAux(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObj {.importwasmexpr: """
+setTimeout(() => {_nime._dvi($1, $2)}, $0)
 """.}
 
 proc setInterval*(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObj {.inline.} =
