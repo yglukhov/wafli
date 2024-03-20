@@ -9,6 +9,7 @@ type
 
   Component* = ref object of RootObj
     mRenderHtml*: proc(cbStore: CallbackStore, root: Node, document: Document) {.gcsafe.}
+    mUnmount*: proc() {.gcsafe.}
 
 proc setProperty(n: Node, k: cstring, v: bool) {.inline.} =
   setProperty(n, k, int32(v))
@@ -330,6 +331,7 @@ proc processSubcomponent(n, parentId: NimNode, idCounter: var int, res, componen
   let attrs = parseNodeAttributes(n)
   res.add quote do:
     var `id` = `name`()
+    registerUnmountCb(`component`, `id`.mUnmount)
 
   for a in attrs:
     let attrName = ident(a.name)
@@ -494,6 +496,7 @@ proc makeExtractEnvTypeFunc(name: NimNode, body: NimNode, vars: seq[VarDef]): Ni
     proc getBodyTypeFunc(): auto =
       template html(b: untyped) {.used, inject.} = discard
       template cssStr(b: untyped) {.used, inject.} = discard
+      template unmount(b: untyped) {.used, inject.} = discard
       {.push used.}
       `body`
       {.pop.}
@@ -520,6 +523,9 @@ proc processComponent(name, body: NimNode): NimNode =
   procBody.add quote do:
     `extractTypeFunc`
     let `theEnv` = typeof(getBodyTypeFunc())()
+    template unmount(code: untyped) {.used.} =
+      `theEnv`.mUnmount = proc() {.gcsafe.} =
+        code
     `body`
     return `theEnv`
 

@@ -14,6 +14,7 @@ proc document*(): Document {.importwasmp.}
 proc body*(d: Document): Node {.importwasmp.}
 proc head*(d: Document): Node {.importwasmp.}
 proc documentElement*(d: Document): Node {.importwasmp.}
+proc getElementById*(d: Document, id: cstring): Node {.importwasmm.}
 proc createElement*(d: Document, s: cstring): Node {.importwasmm.}
 proc createTextNode*(d: Document, s: cstring): Node {.importwasmm.}
 proc createDocumentFragment*(d: Document): Node {.importwasmm.}
