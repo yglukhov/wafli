@@ -8,24 +8,26 @@ type
     unmountCbs*: seq[proc() {.gcsafe.}]
     children*: seq[CallbackStore]
 
-proc newCallbackStore*(parent: CallbackStore): CallbackStore =
-  result = CallbackStore()
-  if not parent.isNil:
-    parent.children.add(result)
+proc newCallbackStore*(): CallbackStore {.inline.} =
+  CallbackStore()
 
-proc clear*(s: CallbackStore) {.gcsafe.} =
-  s.callbacks.setLen(0)
+proc newCallbackStore*(parent: CallbackStore): CallbackStore =
+  result = newCallbackStore()
+  parent.children.add(result)
+
+proc clearAux(s: CallbackStore) {.gcsafe.} =
+  for c in s.children:
+    c.clearAux()
   for ss in s.subscriptions:
     ss.unsubscribe()
-  s.subscriptions.setLen(0)
-
   for c in s.unmountCbs:
     c()
-  s.unmountCbs.setLen(0)
 
-  for c in s.children:
-    c.clear()
+proc clear*(s: CallbackStore) {.gcsafe.} =
+  s.clearAux()
   s.children.setLen(0)
+  s.subscriptions.setLen(0)
+  s.unmountCbs.setLen(0)
 
 proc registerUnmountCb*(s: CallbackStore, cb: proc() {.gcsafe.}) =
   if cb != nil:

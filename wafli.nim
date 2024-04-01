@@ -76,27 +76,29 @@ proc collectVars(body: NimNode, res: var seq[VarDef]) =
   for n in body:
     if n.kind in {nnkVarSection, nnkLetSection}:
       for c in n:
-        c.expectKind(nnkIdentDefs)
-        let (name, isPublic) = parseName(c[0])
-        if isPublic:
-          c[0] = name
-          res.add((n.kind == nnkLetSection, name))
+        if c.kind == nnkIdentDefs:
+          let (name, isPublic) = parseName(c[0])
+          if isPublic:
+            c[0] = name
+            res.add((n.kind == nnkLetSection, name))
 
 proc replaceVars(body: NimNode): NimNode =
   result = newNimNode(nnkStmtList)
   for n in body:
     if n.kind in {nnkVarSection, nnkLetSection}:
       for c in n:
-        c.expectKind(nnkIdentDefs)
-        let (name, isPublic) = parseName(c[0])
-        if isPublic:
-          result.add quote do:
-            template `name`: auto = theEnv.`name`
-          let val = c[2]
-          if val.kind != nnkEmpty:
+        var processed = false
+        if c.kind == nnkIdentDefs:
+          let (name, isPublic) = parseName(c[0])
+          if isPublic:
             result.add quote do:
-              `name` = `val`
-        else:
+              template `name`: auto = theEnv.`name`
+            let val = c[2]
+            if val.kind != nnkEmpty:
+              result.add quote do:
+                `name` = `val`
+            processed = true
+        if not processed:
           result.add(newTree(n.kind, c))
     else:
       result.add(n)
@@ -536,7 +538,7 @@ proc processComponent(name, body: NimNode): NimNode =
 macro component*(name, body: untyped): untyped =
   result = processComponent(name, body)
 
-proc writeCss(css: cstring) =
+proc writeCss(css: string) =
   let d = document()
   let style = d.createElement("style")
   style.textContent = css
@@ -555,7 +557,7 @@ template renderMain*(c: untyped, rootNode: Node) =
   block:
     writeCss(static(allCss))
     if mainCallbackStore.isNil:
-      mainCallbackStore = newCallbackStore(nil)
+      mainCallbackStore = newCallbackStore()
     var comp = c()
     renderHtml(comp, mainCallbackStore, rootNode, document())
 

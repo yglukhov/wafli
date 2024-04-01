@@ -3,9 +3,7 @@ import wasmrt
 proc log*(s: cstring, o: JSObj) {.importwasmf: "console.log".}
 
 proc length*(j: JSObj): int {.importwasmp.}
-proc strWriteOut(j: JSObj, p: pointer, len: int): int {.importwasmexpr: """
-new TextEncoder().encodeInto(_nimo[$0], new Uint8Array(_nima.buffer, $1, $2)).written
-""".}
+proc strWriteOut(j: JSObj, p: pointer, len: int): int {.importwasmf: "_nimws".}
 
 proc jsStringToStr*(v: JSObj): string =
   if not v.isNil:

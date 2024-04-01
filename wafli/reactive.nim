@@ -273,3 +273,15 @@ proc privateDisable*(s: Subscription) {.inline.} = s.refCount = 0
 proc privateEnable*(s: Subscription) {.inline.} = s.refCount = 1
 proc privateToWritable*[T](r: Reactive[T]): Writable[T] {.inline.} =
   privateWritableFromImpl[T](r.impl)
+
+template tangleExperimental*(a: var Writable, b: var Writable, atob: untyped, btoa: untyped): tuple[sa, sb: Subscription] =
+  var s2: Subscription
+  let s1 = a.subscribe do():
+    privateDisable(s2)
+    b %= atob
+    privateEnable(s2)
+  s2 = b.subscribe do():
+    privateDisable(s1)
+    a %= btoa
+    privateEnable(s1)
+  (s1, s2)
