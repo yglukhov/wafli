@@ -321,6 +321,17 @@ proc bindAttributeWrite[T](a, b: var Writable[T], cbStore: CallbackStore) =
   cbStore.subscriptions.add(sa)
   cbStore.subscriptions.add(sb)
 
+proc bindAttributeWrite[T](a: Reactive[T], b: var Writable[T], cbStore: CallbackStore) =
+  b %= a.value
+
+  let rb = b.toReadable()
+
+  let sa = a.subscribe() do() {.gcsafe.}:
+    var w = privateToWritable(rb)
+    w %= a.value
+
+  cbStore.subscriptions.add(sa)
+
 proc processSubcomponent(n, parentId: NimNode, idCounter: var int, res, component, document: NimNode) =
   let name = case n.kind
   of {nnkCommand, nnkCall}: n[0]
@@ -415,8 +426,12 @@ proc processHtmlElements(n, parentId: NimNode, idCounter: var int, res, componen
             attrName.expectKind({nnkIdent, nnkStrLit})
             let name = $attrName
             let value = attr[1]
-            res.add quote do:
-              setAttribute(`elemId`, `name`, `value`, `component`)
+            if name == "onInit":
+              res.add quote do:
+                `value`(`elemId`)
+            else:
+              res.add quote do:
+                setAttribute(`elemId`, `name`, `value`, `component`)
         res.add quote do:
           append(`parentId`, `elemId`, `component`, `document`)
     of {nnkIdent, nnkSym}:
