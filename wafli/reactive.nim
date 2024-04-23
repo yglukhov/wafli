@@ -276,11 +276,11 @@ proc privateToWritable*[T](r: Reactive[T]): Writable[T] {.inline.} =
 
 template tangleExperimental*(a: var Writable, b: var Writable, atob: untyped, btoa: untyped): tuple[sa, sb: Subscription] =
   var s2: Subscription
-  let s1 = a.subscribe do():
+  let s1 = a.subscribe do() {.gcsafe.}:
     privateDisable(s2)
     b %= atob
     privateEnable(s2)
-  s2 = b.subscribe do():
+  s2 = b.subscribe do() {.gcsafe.}:
     privateDisable(s1)
     a %= btoa
     privateEnable(s1)
