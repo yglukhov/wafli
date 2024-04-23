@@ -68,7 +68,8 @@ proc getStrProperty*(n: JSObj, idx: cstring): string {.inline.} =
 proc emptyJSArray*(): JSObj {.importwasmp: "[]".}
 proc emptyJSObject*(): JSObj {.importwasmp: "{}".}
 proc push*(o, v: JSObj) {.importwasmm.}
-proc jsStr*(a: cstring): JSObj {.importwasmp: "_nimsj($0)".}
+proc nimsj(a: pointer): JSObj {.importwasmf.}
+proc jsStr*(a: cstring): JSObj {.inline.} = nimsj(a)
 
 proc setIntervalAux(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObj {.importwasmexpr: """
 setInterval(() => {_nime._dvi($1, $2)}, $0)
@@ -90,3 +91,4 @@ proc toFixedAux(f: float64, d: int32): JSObj {.importwasmm: "toFixed".}
 
 proc toFixed*(f: float, numDecimals: int): string {.inline.} = jsStringToStr(toFixedAux(f, numDecimals.int32))
 
+proc alert*(s: cstring) {.importwasmf.}
