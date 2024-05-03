@@ -34,7 +34,7 @@ proc setReactiveWritableProperty[T](n: Node, tag, key: static[string], value: va
     setProperty(n, key, r.value)
   setProperty(n, key, r.value)
   ctx.subscriptions.add(s)
-  when tag == "input" and key in ["value", "checked"]:
+  when tag in ["input", "select", "textarea"] and key in ["value", "checked"]:
     subscribeToEventPropertyChange(n, key, s, value)
   else:
     {.error: "Don't know how to bind to " & tag & "." & key.}
