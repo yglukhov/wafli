@@ -24,13 +24,14 @@ let d = Document(mHead: Node(kind: tag, name: "head"), mBody: Node(kind: tag, na
 proc document*(): Document = d
 proc body*(d: Document): Node = d.mBody
 proc head*(d: Document): Node = d.mHead
+proc createDocumentFragment*(d: Document): Node = Node(kind: tag, name: "#document-fragment")
 proc createElement*(d: Document, s: cstring): Node = Node(kind: tag, name: $s)
 proc createTextNode*(d: Document, s: cstring): Node = Node(kind: text, text: $s)
 proc setAttribute*(n: Node, name, value: cstring) = n.attributes[$name] = $value
 proc setProperty*(n: Node, name, value: cstring) = n.setAttribute(name, value)
 proc setProperty*(n: Node, name: cstring, value: int) = n.setAttribute($name, $value)
 proc append*(n, c: Node) = n.children.add(c)
-proc append*(n: Node, text: cstring) = n.children.add(Node(kind: text, text: $text))
+proc append*(n: Node, text: cstring) = n.children.add(Node(kind: NodeKind.text, text: $text))
 proc `textContent=`*(n: Node, c: cstring) =
   if n.kind == text:
     n.text = $c
@@ -108,3 +109,6 @@ proc setClassMultiple*(n: Node, classList: string, predicate: bool) =
       if i >= 0:
         c.delete(i)
   n.attributes["class"] = c.join(" ")
+
+proc applyFragment*(parent, newFragment: Node, fragId: uint32) =
+  discard

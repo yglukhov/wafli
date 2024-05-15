@@ -26,8 +26,8 @@ type
 
 proc delElem[T](s: var seq[T], e: T) {.inline.} =
   let i = s.find(e)
-  assert(i >= 0)
-  s.del(i)
+  if i >= 0:
+    s.del(i)
 
 proc release(r: ReactiveImplBase) {.gcsafe, raises: [].}
 
@@ -47,12 +47,18 @@ proc release(r: ReactiveImplBase) =
 proc `=destroy`*[T](r: Reactive[T]) =
   if r.impl != nil:
     release(r.impl)
+    {.cast(raises: []).}:
+      `=destroy`(r.impl)
 
 proc `=destroy`*[T](r: Writable[T]) =
   if r.impl != nil:
     release(r.impl)
+    {.cast(raises: []).}:
+      `=destroy`(r.impl)
 
 proc `=copy`*[T](a: var Reactive[T], b: Reactive[T]) =
+  if a.impl != nil:
+    release(a.impl)
   a.impl = b.impl
   inc a.impl.refCount
 
@@ -149,11 +155,16 @@ proc updateReal[T](r: ReactiveImplBase) =
   let r = cast[ReactiveImpl[T]](r)
   r.value = r.updateAux(r.sources)
 
-proc derivedAux[T](expression: cstring, sources: openarray[ReactiveImplBase], cb: proc(s: openarray[ReactiveImplBase]): T {.gcsafe.}): Reactive[T] =
-  let impl = ReactiveImpl[T](sources: @sources)
+proc setSources(a: ReactiveImplBase, sources: openarray[ReactiveImplBase]) =
   for s in sources:
-    s.destinations.add(impl)
+    s.destinations.add(a)
     inc s.refCount
+  a.sources = @sources
+
+proc derivedAux[T](expression: cstring, sources: openarray[ReactiveImplBase], cb: proc(s: openarray[ReactiveImplBase]): T {.gcsafe.}): Reactive[T] =
+  let impl = ReactiveImpl[T]()
+  setSources(impl, sources)
+
   impl.updateAux = cb
   impl.update = updateReal[T]
   when debugReactive:
@@ -176,12 +187,10 @@ type
     loaded*: bool
 
 proc derivedAsyncAux[T](expression: cstring, sources: openarray[ReactiveImplBase], cb: proc(s: openarray[ReactiveImplBase]): Future[T] {.gcsafe.}): Reactive[AsyncResult[T]] =
-  let impl = ReactiveImplAsync[AsyncResult[T]](sources: @sources)
+  let impl = ReactiveImplAsync[AsyncResult[T]]()
   when debugReactive:
     impl.expression = expression
-  for s in sources:
-    s.destinations.add(impl)
-    inc s.refCount
+  setSources(impl, sources)
   impl.updateAux = proc(s: openarray[ReactiveImplBase]): AsyncResult[T] =
     let f = cb(s)
     if f.finished:
@@ -225,21 +234,24 @@ proc replaceSourcesWithDefault(n: NimNode, res: var seq[NimNode]): NimNode =
       n[i] = replaceSourcesWithDefault(n[i], res)
     return n
 
-proc parseDerived(a: NimNode): tuple[sourceImpls, closureBody: NimNode] =
+proc parseDerived(a: NimNode): tuple[sourceTypes, sourceImpls, closureBody: NimNode] =
   var sources: seq[NimNode]
   let body = replaceSourcesWithDefault(a, sources)
 
   let input = ident"reactiveInput_769"
   let closureBody = newNimNode(nnkStmtList)
   let sourceImpls = newNimNode(nnkBracket)
+  let sourceTypes = newNimNode(nnkStmtList)
   for i, s in sources:
     let sourceId = ident("source" & $i)
-    let typ = newCall("typeof", newCall(bindSym"value", s))
+    let typ = genSym(nskType, "SourceTyp")
+    sourceTypes.add quote do:
+      type `typ` = typeof(value(`s`))
     closureBody.add quote do:
       let `sourceId` = cast[ReactiveImpl[`typ`]](`input`[`i`])
     sourceImpls.add(newCall(bindSym"getImplBase", s))
   closureBody.add(body)
-  (sourceImpls, closureBody)
+  (sourceTypes, sourceImpls, closureBody)
 
 template astToOrigin(n: untyped): cstring =
   when debugReactive:
@@ -249,17 +261,21 @@ template astToOrigin(n: untyped): cstring =
 
 macro derived*(a: untyped): untyped =
   let aCopy = copyNimTree(a)
-  let (sourceImpls, closureBody) = parseDerived(a)
+  let (sourceTypes, sourceImpls, closureBody) = parseDerived(a)
   result = quote do:
-    derivedAux(astToOrigin(`aCopy`), `sourceImpls`) do(reactiveInput_769 {.inject.}: openarray[ReactiveImplBase]) -> auto {.gcsafe.}:
-      `closureBody`
+    block:
+      `sourceTypes`
+      derivedAux(astToOrigin(`aCopy`), `sourceImpls`) do(reactiveInput_769 {.inject.}: openarray[ReactiveImplBase]) -> auto {.gcsafe.}:
+        `closureBody`
 
 macro derivedAsync*(a: untyped): untyped =
   let aCopy = copyNimTree(a)
-  let (sourceImpls, closureBody) = parseDerived(a)
+  let (sourceTypes, sourceImpls, closureBody) = parseDerived(a)
   result = quote do:
-    derivedAsyncAux(astToOrigin(`aCopy`), `sourceImpls`) do(reactiveInput_769 {.inject.}: openarray[ReactiveImplBase]) -> auto {.gcsafe.}:
-      `closureBody`
+    block:
+      `sourceTypes`
+      derivedAsyncAux(astToOrigin(`aCopy`), `sourceImpls`) do(reactiveInput_769 {.inject.}: openarray[ReactiveImplBase]) -> auto {.gcsafe.}:
+        `closureBody`
 
 converter toValue*[T](r: Reactive[T]): T {.inline.} = r.value
 
@@ -274,14 +290,50 @@ proc privateEnable*(s: Subscription) {.inline.} = s.refCount = 1
 proc privateToWritable*[T](r: Reactive[T]): Writable[T] {.inline.} =
   privateWritableFromImpl[T](r.impl)
 
-template tangleExperimental*(a: var Writable, b: var Writable, atob: untyped, btoa: untyped): tuple[sa, sb: Subscription] =
-  var s2: Subscription
-  let s1 = a.subscribe do() {.gcsafe.}:
-    privateDisable(s2)
-    b %= atob
-    privateEnable(s2)
-  s2 = b.subscribe do() {.gcsafe.}:
-    privateDisable(s1)
-    a %= btoa
-    privateEnable(s1)
-  (s1, s2)
+type
+  TangleProxyBase = ref object of ReactiveImplBase
+    other: TangleProxyBase
+
+  TangleProxy[T] = ref object of TangleProxyBase
+    target: ReactiveImpl[T]
+    updateAux: proc(): T {.gcsafe.}
+
+proc updateTangleProxy[T](r: ReactiveImplBase) {.gcsafe, nimcall.} =
+  let r = cast[TangleProxy[T]](r)
+  if not r.other.isNil:
+    let oldOtherOther = r.other.other
+    r.other.other = nil
+
+    r.target.value = r.updateAux()
+    trigger(r.target)
+
+    r.other.other = oldOtherOther
+
+proc tangleAux[A, B](a: var Writable[A], b: var Writable[B],
+                     afromb: (proc(): A {.gcsafe.}),
+                     bfroma: (proc(): B {.gcsafe.})) =
+  assert(a.impl.sources.len == 0, "Value already tangled")
+  assert(b.impl.sources.len == 0, "Value already tangled")
+
+  let proxyA = TangleProxy[A](target: a.impl, updateAux: afromb, sources: @[b.impl.ReactiveImplBase], update: updateTangleProxy[A])
+  b.impl.destinations.add(proxyA)
+  inc b.impl.refCount
+
+  let proxyB = TangleProxy[B](target: b.impl, updateAux: bfroma, sources: @[a.impl.ReactiveImplBase], update: updateTangleProxy[B])
+  a.impl.destinations.add(proxyB)
+  inc a.impl.refCount
+
+  proxyA.other = proxyB
+  proxyB.other = proxyA
+
+  a.impl.sources = @[proxyA.ReactiveImplBase]
+  b.impl.sources = @[proxyB.ReactiveImplBase]
+
+macro tangleExperimental*(a: var Writable, afromb: untyped, b: var Writable, bfroma: untyped) =
+  result = quote do:
+    block:
+      tangleAux(`a`, `b`,
+        (proc(): auto {.gcsafe.} =
+             `afromb`),
+        (proc(): auto {.gcsafe.} =
+             `bfroma`))

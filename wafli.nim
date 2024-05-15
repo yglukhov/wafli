@@ -168,12 +168,13 @@ proc processIfStmt(n, parentId: NimNode, idCounter: var int, res, component, doc
   res.add quote do:
     let `componentId` = newCallbackStore(`component`)
     let `fragId` = newFragId()
-    let `prcId` = proc() {.gcsafe.} =
-      let `fragmentId` = `document`.createDocumentFragment()
+    proc `prcId`() {.gcsafe.} =
       `componentId`.clear()
+      let `fragmentId` = `document`.createDocumentFragment()
       `newIf`
       applyFragment(`parentId`, `fragmentId`, `fragId`)
     `prcId`()
+
     `subscriptions`
 
 proc processCaseStmt(n, parentId: NimNode, idCounter: var int, res, component, document: NimNode) =
@@ -205,9 +206,9 @@ proc processCaseStmt(n, parentId: NimNode, idCounter: var int, res, component, d
   res.add quote do:
     let `componentId` = newCallbackStore(`component`)
     let `fragId` = newFragId()
-    let `prcId` = proc() {.gcsafe.} =
-      let `fragmentId` = `document`.createDocumentFragment()
+    proc `prcId`() {.gcsafe.} =
       `componentId`.clear()
+      let `fragmentId` = `document`.createDocumentFragment()
       `newCase`
       applyFragment(`parentId`, `fragmentId`, `fragId`)
     `prcId`()
@@ -248,9 +249,9 @@ proc processForStmt(n, parentId: NimNode, idCounter: var int, res, component, do
   res.add quote do:
     let `componentId` = newCallbackStore(`component`)
     let `fragId` = newFragId()
-    let `prcId` = proc() {.gcsafe.} =
-      let `fragmentId` = `document`.createDocumentFragment()
+    proc `prcId`() {.gcsafe.} =
       `componentId`.clear()
+      let `fragmentId` = `document`.createDocumentFragment()
       `newFor`
       applyFragment(`parentId`, `fragmentId`, `fragId`)
     `prcId`()
