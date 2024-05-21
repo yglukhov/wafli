@@ -19,7 +19,7 @@ type
   Subscription* = ref object of ReactiveImplBase
     cb: proc() {.gcsafe.}
 
-  Reactive*[T] {.inheritable.} = object
+  Reactive*[T] {.inheritable, pure.} = object
     impl: ReactiveImpl[T]
 
   Writable*[T] = object of Reactive[T]
