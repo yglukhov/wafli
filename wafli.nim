@@ -23,7 +23,7 @@ proc setAttribute(n: Node, attr: cstring, cb: proc(), ctx: CallbackStore) =
   ctx.callbacks.add(cb)
   subscribeToCallback(n, attr, ctx, idx)
 
-proc setReactiveProperty[T](n: Node, name: string, value: Reactive[T], ctx: CallbackStore) =
+proc setReactiveProperty[T](n: Node, name: cstring, value: Reactive[T], ctx: CallbackStore) =
   ctx.subscriptions.add value.subscribe() do() {.gcsafe.}:
     setProperty(n, name, value.value)
   setProperty(n, name, value.value)
