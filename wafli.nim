@@ -472,7 +472,7 @@ proc processHtmlAux(b: NimNode): NimNode =
     theEnv.mRenderHtml = proc(`component`: CallbackStore, `root`: Node, `document`: Document) {.gcsafe.} =
       `renderCode`
 
-var allCss {.compileTime.} = "_wafli{display: none;}"
+var allCss {.compileTime.} = "_wafli{display:none;}"
 
 proc processCssAux(b: NimNode): NimNode =
   result = newEmptyNode()
@@ -480,14 +480,16 @@ proc processCssAux(b: NimNode): NimNode =
   allCss &= css
   allCss &= "\n"
 
+proc cssStr*(s: static[string]) =
+  static:
+    allCss &= s
+
 proc processHtml(b: NimNode): NimNode =
   result = b
   for i in 0 ..< b.len:
     if b[i].kind == nnkCall and b[i][0].kind == nnkIdent and $b[i][0] == "html":
       b[i] = processHtmlAux(b[i])
-      # return
-    elif b[i].kind in { nnkCall, nnkCommand } and b[i][0].kind == nnkIdent and $b[i][0] == "cssStr":
-      b[i] = processCssAux(b[i])
+      return
 
   # error("html not defined")
 
@@ -513,7 +515,6 @@ proc makeExtractEnvTypeFunc(name: NimNode, body: NimNode, vars: seq[VarDef]): Ni
   result = quote do:
     proc getBodyTypeFunc(): auto =
       template html(b: untyped) {.used, inject.} = discard
-      template cssStr(b: untyped) {.used, inject.} = discard
       template unmount(b: untyped) {.used, inject.} = discard
       {.push used.}
       `body`
