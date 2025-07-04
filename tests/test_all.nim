@@ -8,7 +8,7 @@ const testFileNames = static:
   var r = newSeq[string]()
   for file in walkDir(currentSourcePath.parentDir(), checkDir=true):
     let n = file.path.extractFileName()
-    if n.endsWith(".nim") and n.startsWith("t"):
+    if n.endsWith(".nim") and n.startsWith("t") and n != "test_all.nim":
       r.add(n[0 .. ^5])
   r
 
