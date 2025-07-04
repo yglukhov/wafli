@@ -8,7 +8,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        nim-channel:    [stable]
+        nim-channel: [devel]
 
     name: ${{ matrix.nim-channel }}
     runs-on: ubuntu-latest
@@ -16,7 +16,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Setup nim
-      uses: jiro4989/setup-nim-action@v1
+      uses: jiro4989/setup-nim-action@v2
       with:
         nim-version: ${{ matrix.nim-channel }}
 
@@ -37,7 +37,7 @@ jobs:
         mv *.html _site/
 
     - name: Upload Pages artifact
-      uses: actions/upload-pages-artifact@v2
+      uses: actions/upload-pages-artifact@v3
 
   # Deploy job
   deploy:
@@ -60,4 +60,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v2 # or the latest "vX.X.X" version tag for this action
+        uses: actions/deploy-pages@v4 # or the latest "vX.X.X" version tag for this action
