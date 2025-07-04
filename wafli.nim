@@ -333,7 +333,7 @@ proc bindAttributeWrite[T](a: Reactive[T], b: var Writable[T], cbStore: Callback
 
   cbStore.subscriptions.add(sa)
 
-proc processSubcomponent(n, parentId: NimNode, idCounter: var int, res, component, document: NimNode) =
+proc processSubComponent(n, parentId: NimNode, idCounter: var int, res, component, document: NimNode) =
   let name = case n.kind
   of {nnkCommand, nnkCall}: n[0]
   of {nnkIdent, nnkSym}: n
