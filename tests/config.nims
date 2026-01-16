@@ -2,11 +2,12 @@ switch("path", "$projectDir/..")
 
 when defined(wasm):
   --os:linux
-  --cpu:i386
+  --cpu:wasm32
   --threads:off
   --cc:clang
   --gc:orc
   --d:release
+  --d:danger
   --nomain
   --opt:size
   --stackTrace:off
@@ -30,4 +31,5 @@ when defined(wasm):
   switch("clang.cpp.options.linker", linkerOptions)
 
 else:
+  --passC:"-Wno-incompatible-pointer-types"
   --debugger:native

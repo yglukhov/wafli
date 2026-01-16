@@ -2,7 +2,7 @@
 
 version       = "0.1.0"
 author        = "Yuriy Glukhov"
-description   = "A new awesome nimble package"
+description   = "Reactive web application framework that compiles to WebAssembly"
 license       = "MIT"
 
 
@@ -18,5 +18,6 @@ task test, "Build tests":
     if n.startsWith("t") and n.endsWith(".nim"):
       exec "nim c -d:wasm --out:" & n & ".wasm tests/" & n
       exec "wasm2html " & n & ".wasm " & n[0 .. ^5] & ".html"
+      # exec "wasm2wat " & n & ".wasm -o " & n[0 .. ^5] & ".wat"
   when defined(linux):
     try: exec "xdg-open test_all.html" except: discard
