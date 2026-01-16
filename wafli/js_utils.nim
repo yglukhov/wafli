@@ -1,94 +1,76 @@
 import wasmrt
 
-proc log*(s: cstring, o: JSObj) {.importwasmf: "console.log".}
+proc log*(s: cstring, o: JSObject) {.importwasmf: "console.log".}
 
-proc length*(j: JSObj): int {.importwasmp.}
-proc strWriteOut(j: JSObj, p: pointer, len: int): int {.importwasmf: "_nimws".}
+proc length*(j: JSObject): int {.importwasmp: "length|0".}
 
-proc jsStringToStr*(v: JSObj): string =
-  if not v.isNil:
-    let sz = length(v) * 3
-    result.setLen(sz)
-    if sz != 0:
-      let actualSz = strWriteOut(v, addr result[0], sz)
-      result.setLen(actualSz)
+proc identity(n: int32): JSObject {.importwasmexpr: "$0".}
+proc identity(n: bool): JSObject {.importwasmexpr: "!!$0".}
 
-proc setProp(n: JSObj, kIsStr: bool, k: pointer, vIsStr: bool, v: pointer) {.importwasmexpr: """
-_nimo[$0][$1?_nimsj($2):$2] = $3?_nimsj($4):$4
-""".}
+proc setProp(n: JSObject, k: JSObject, v: JSObject) {.importwasmexpr: "$0[$1] = $2".}
 
-proc setProperty*(n: JSObj, k, v: cstring) {.inline.} =
-  setProp(n, true, cast[pointer](k), true, cast[pointer](v))
+proc setProperty*(n: JSObject, k: cstring, v: int32) {.inline.} =
+  setProp(n, JSString(k), identity(v))
 
-proc setProperty*(n: JSObj, k: cstring, v: int32) {.inline.} =
-  setProp(n, true, cast[pointer](k), false, cast[pointer](v))
+proc setProperty*(n: JSObject, k, v: JSString) {.inline.} =
+  setProp(n, k, v)
 
-proc setProperty*(n: JSObj, k: int, v: cstring) {.inline.} =
-  setProp(n, false, cast[pointer](k), true, cast[pointer](v))
+proc setProperty*(n: JSObject, k: cstring, v: bool) {.inline.} =
+  setProp(n, JSString(k), identity(v))
 
-proc setProperty*(n: JSObj, k: int, v: int32) {.inline.} =
-  setProp(n, false, cast[pointer](k), false, cast[pointer](v))
+proc setProperty*(n: JSObject, k: JSString, v: JSObject) {.inline.} =
+  setProp(n, k, v)
 
-proc setProp(n: JSObj, kIsString: bool, k: pointer, v: JSObj) {.importwasmexpr: """
-_nimo[$0][$1?_nimsj($2):$2] = _nimo[$3]
-"""}
+proc setProperty*(n: JSObject, k: int, v: int32) {.inline.} =
+  setProp(n, identity(k.int32), identity(v))
 
-proc setProperty*(n: JSObj, k: cstring, v: JSObj) {.inline.} =
-  setProp(n, true, cast[pointer](k), v)
+proc setProperty*(n: JSObject, k: int, v: cstring) {.inline.} =
+  setProp(n, identity(k.int32), JSString(v))
 
-proc setProperty*(n: JSObj, k: int, v: JSObj) {.inline.} =
-  setProp(n, false, cast[pointer](k), v)
+proc setProperty*(n: JSObject, k: int, v: bool) {.inline.} =
+  setProp(n, identity(k.int32), identity(v))
 
-proc getIntProperty(n: JSObj, isStr: bool, k: pointer): int32 {.importwasmexpr: """
-_nimo[$0][$1?_nimsj($2):$2]
-""".}
+proc setProperty*(n: JSObject, k: int, v: JSObject) {.inline.} =
+  setProp(n, identity(k.int32), v)
 
-proc getObjProperty(n: JSObj, isStr: bool, k: pointer): JSObj {.importwasmexpr: """
-_nimo[$0][$1?_nimsj($2):$2]
-""".}
+proc objToInt(v: JSObject): int32 {.importwasmexpr: "$0".}
 
-proc getIntProperty*(n: JSObj, idx: int32): int32 {.inline.} =
-  getIntProperty(n, false, cast[pointer](idx))
+proc getObjProperty(n: JSObject, k: JSObject): JSObject {.importwasmexpr: "$0[$1]||null".}
 
-proc getIntProperty*(n: JSObj, idx: cstring): int32 {.inline.} =
-  getIntProperty(n, true, cast[pointer](idx))
+proc getIntProperty*(n: JSObject, idx: int32): int32 {.inline.} =
+  objToInt(getObjProperty(n, identity(idx)))
 
-proc getObjProperty*(n: JSObj, idx: int32): JSObj {.inline.} =
-  getObjProperty(n, false, cast[pointer](idx))
+proc getIntProperty*(n: JSObject, idx: JSString): int32 {.inline.} =
+  objToInt(getObjProperty(n, idx))
 
-proc getObjProperty*(n: JSObj, idx: cstring): JSObj {.inline.} =
-  getObjProperty(n, true, cast[pointer](idx))
+proc getObjProperty*(n: JSObject, idx: int32): JSObject {.inline.} =
+  getObjProperty(n, identity(idx))
 
-proc getStrProperty*(n: JSObj, idx: int32): string {.inline.} =
-  jsStringToStr(getObjProperty(n, idx))
+proc getObjProperty*(n: JSObject, idx: cstring): JSObject {.inline.} =
+  getObjProperty(n, JSString(idx))
+proc getStrProperty*(n: JSObject, idx: int32): string {.inline.} =
+  getObjProperty(n, identity(idx)).JSString
 
-proc getStrProperty*(n: JSObj, idx: cstring): string {.inline.} =
-  jsStringToStr(getObjProperty(n, idx))
+proc getStrProperty*(n: JSObject, idx: cstring): string {.inline.} =
+  getObjProperty(n, JSString(idx)).JSString
 
-proc emptyJSArray*(): JSObj {.importwasmp: "[]".}
-proc emptyJSObject*(): JSObj {.importwasmp: "{}".}
-proc push*(o, v: JSObj) {.importwasmm.}
-proc nimsj(a: pointer): JSObj {.importwasmf.}
-proc jsStr*(a: cstring): JSObj {.inline.} = nimsj(a)
+proc emptyJSArray*(): JSObject {.importwasmp: "[]".}
+proc emptyJSObject*(): JSObject {.importwasmp: "{}".}
+proc push*(o, v: JSObject) {.importwasmm.}
 
-proc setIntervalAux(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObj {.importwasmexpr: """
-setInterval(() => {_nime._dvi($1, $2)}, $0)
-""".}
+proc closurize(cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObject {.importwasmexpr: "() => $0($1)".}
 
-proc setTimeoutAux(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObj {.importwasmexpr: """
-setTimeout(() => {_nime._dvi($1, $2)}, $0)
-""".}
+proc setInterval(cb: JSObject, ms: uint32): JSObject {.importwasmf.}
+proc setTimeout(cb: JSObject, ms: uint32): JSObject {.importwasmf.}
 
-proc setInterval*(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObj {.inline.} =
-  defineDyncall("vi")
-  setIntervalAux(ms, cb, ctx)
+proc setInterval*(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObject {.inline.} =
+  setInterval(closurize(cb, ctx), ms)
 
-proc setTimeout*(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObj {.inline.} =
-  defineDyncall("vi")
-  setTimeoutAux(ms, cb, ctx)
+proc setTimeout*(ms: uint32, cb: proc(ctx: pointer) {.cdecl.}, ctx: pointer): JSObject {.inline.} =
+  setTimeout(closurize(cb, ctx), ms)
 
-proc toFixedAux(f: float64, d: int32): JSObj {.importwasmm: "toFixed".}
+proc toFixedAux(f: float64, d: int32): JSString {.importwasmm: "toFixed".}
 
-proc toFixed*(f: float, numDecimals: int): string {.inline.} = jsStringToStr(toFixedAux(f, numDecimals.int32))
+proc toFixed*(f: float, numDecimals: int): string {.inline.} = toFixedAux(f, numDecimals.int32)
 
 proc alert*(s: cstring) {.importwasmf.}

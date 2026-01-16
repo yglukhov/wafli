@@ -1,5 +1,7 @@
 import wafli
-import wafli/dom
+import wafli/[dom, js_utils]
+import yasync
+import wasmrt
 
 component Head:
   html:
@@ -12,3 +14,28 @@ component Head:
 
 proc enableBootstrap*() =
   renderMain(Head, document().head)
+
+proc resumeSleep(cont: pointer) {.cdecl.} =
+  let cont = cast[ptr Cont[void]](cont)
+  cont.complete()
+
+proc shouldRunAutotest(): bool {.importwasmp: "typeof process!='undefined' && typeof window != 'undefined' && typeof document != 'undegined'".}
+
+template autotest*(body: untyped) =
+  {.push hint[DuplicateModuleImport]: off.}
+  import yasync
+  import wafli/dom
+  {.pop.}
+
+  proc sleep(ms: uint32, cont: ptr Cont[void]) {.asyncRaw.} =
+    discard setTimeout(ms, resumeSleep, cont)
+
+  proc runAutotest() {.async.} =
+    body
+
+  if shouldRunAutotest():
+    runAutotest().then() do(e: ref Exception):
+      if not e.isNil:
+        raise e
+      else:
+        echo "Autotest complete"

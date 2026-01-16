@@ -1,6 +1,5 @@
 import wafli
-import wafli/reactive
-import wafli/dom_dummy
+import wafli/[reactive, dom]
 
 component *Form:
   var

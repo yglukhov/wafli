@@ -1,6 +1,7 @@
 import macros, strutils
 import wafli/[types, reactive, dom]
 export reactive
+import wasmrt
 
 type
   VarDef = tuple
@@ -8,7 +9,7 @@ type
     name: NimNode # nnkIdent
 
   Component* = ref object of RootObj
-    mRenderHtml*: proc(cbStore: CallbackStore, root: Node, document: Document) {.gcsafe.}
+    mRenderHtml*: proc(cbStore: CallbackStore, root: Node) {.gcsafe.}
     mUnmount*: proc() {.gcsafe.}
 
 proc setProperty(n: Node, k: cstring, v: bool) {.inline.} =
@@ -24,14 +25,16 @@ proc setAttribute(n: Node, attr: cstring, cb: proc(), ctx: CallbackStore) =
   subscribeToCallback(n, attr, ctx, idx)
 
 proc setReactiveProperty[T](n: Node, name: cstring, value: Reactive[T], ctx: CallbackStore) =
+  let storedN = n.store()
   ctx.subscriptions.add value.subscribe() do() {.gcsafe.}:
-    setProperty(n, name, value.value)
+    setProperty(storedN.get(), name, value.value)
   setProperty(n, name, value.value)
 
 proc setReactiveWritableProperty[T](n: Node, tag, key: static[string], value: var Writable[T], ctx: CallbackStore) =
   let r = value.toReadable()
+  let storedN = n.store()
   let s = value.subscribe() do() {.gcsafe.}:
-    setProperty(n, key, r.value)
+    setProperty(storedN.get(), key, r.value)
   setProperty(n, key, r.value)
   ctx.subscriptions.add(s)
   when tag in ["input", "select", "textarea"] and key in ["value", "checked"]:
@@ -40,8 +43,9 @@ proc setReactiveWritableProperty[T](n: Node, tag, key: static[string], value: va
     {.error: "Don't know how to bind to " & tag & "." & key.}
 
 proc setReactiveClass(n: Node, cls: string, predicate: Reactive[bool], ctx: CallbackStore) =
+  let storedN = n.store()
   ctx.subscriptions.add predicate.subscribe() do() {.gcsafe.}:
-    setClassMultiple(n, cls, predicate)
+    setClassMultiple(storedN.get(), cls, predicate)
   setClassMultiple(n, cls, predicate)
 
 proc append(n: Node, v: cstring, ctx: CallbackStore, document: Document) {.inline.} =
@@ -53,10 +57,11 @@ proc append(n, v: Node, ctx: CallbackStore, document: Document) {.inline.} =
   n.append(v)
 
 proc append(n: Node, value: Reactive[string], ctx: CallbackStore, document: Document) =
-  let nv = document.createTextNode(value.value)
-  n.append(nv)
+  let t = document.createTextNode(value.value)
+  n.append(t)
+  let st = t.store()
   ctx.subscriptions.add value.subscribe() do() {.gcsafe.}:
-    nv.textContent = value.value
+    st.textContent = value.value
 
 proc parseName(name: NimNode): tuple[name: NimNode, isPublic: bool] =
   const nameKinds = {nnkIdent, nnkSym}
@@ -134,7 +139,7 @@ proc derive(c: NimNode): NimNode =
 
 proc processHtmlElements(n, parentId: NimNode, idCounter: var int, res, component, document: NimNode)
 
-proc processIfStmt(n, parentId: NimNode, idCounter: var int, res, component, document: NimNode) =
+proc processIfStmt(n, parentId: NimNode, idCounter: var int, res, component, documentNotUsed: NimNode) =
   let subscriptions = newNimNode(nnkStmtList)
   let newIf = newTree(nnkIfStmt)
 
@@ -143,6 +148,8 @@ proc processIfStmt(n, parentId: NimNode, idCounter: var int, res, component, doc
   let fragmentId = ident("fragment" & $idCounter)
   let componentId = ident("cbstore" & $idCounter)
   let fragId = ident("frag" & $idCounter)
+  let document = ident("document" & $idCounter)
+  let getDocument = bindSym"document"
 
   for branch in n:
     let body = newNimNode(nnkStmtList)
@@ -168,22 +175,27 @@ proc processIfStmt(n, parentId: NimNode, idCounter: var int, res, component, doc
   res.add quote do:
     let `componentId` = newCallbackStore(`component`)
     let `fragId` = newFragId()
+    let newParent = `parentId`.store()
     proc `prcId`() {.gcsafe.} =
       `componentId`.clear()
+      let `document` = `getDocument`()
       let `fragmentId` = `document`.createDocumentFragment()
       `newIf`
-      applyFragment(`parentId`, `fragmentId`, `fragId`)
+      applyFragment(newParent, `fragmentId`, `fragId`)
     `prcId`()
 
     `subscriptions`
 
-proc processCaseStmt(n, parentId: NimNode, idCounter: var int, res, component, document: NimNode) =
+proc processCaseStmt(n, parentId: NimNode, idCounter: var int, res, component, documentNotUsed: NimNode) =
   inc idCounter
   let prcId = ident("prc" & $idCounter)
   let fragmentId = ident("fragment" & $idCounter)
   let componentId = ident("cbstore" & $idCounter)
   let condId = ident("cond" & $idCounter)
   let fragId = ident("frag" & $idCounter)
+  let document = ident("document" & $idCounter)
+  let getDocument = bindSym"document"
+
   let cond = derive(n[0])
   res.add quote do:
     let `condId` = `cond`
@@ -206,31 +218,40 @@ proc processCaseStmt(n, parentId: NimNode, idCounter: var int, res, component, d
   res.add quote do:
     let `componentId` = newCallbackStore(`component`)
     let `fragId` = newFragId()
+    let newParent = `parentId`.store()
     proc `prcId`() {.gcsafe.} =
       `componentId`.clear()
+      let `document` = `getDocument`()
       let `fragmentId` = `document`.createDocumentFragment()
       `newCase`
-      applyFragment(`parentId`, `fragmentId`, `fragId`)
+      applyFragment(newParent, `fragmentId`, `fragId`)
     `prcId`()
     `component`.subscriptions.add `condId`.subscribe(`prcId`)
 
-proc makeCaptureForForStmt(n, content: NimNode): NimNode =
+proc makeCaptureForForStmt(n, content, parentId, document: NimNode): NimNode =
   let prc = newProc(procType = nnkLambda)
+  # prc.addPragma(ident"inline")
   let prms = prc.params
   let call = newCall(prc)
   for i in 0 ..< n.len - 2:
     prms.add(newIdentDefs(n[i], newCall("typeof", n[i])))
     call.add(n[i])
+  prms.add(newIdentDefs(parentId, bindSym"Node"))
+  call.add(parentId)
+  prms.add(newIdentDefs(document, bindSym"Document"))
+  call.add(document)
   prc.body = content
   result = call
 
-proc processForStmt(n, parentId: NimNode, idCounter: var int, res, component, document: NimNode) =
+proc processForStmt(n, parentId: NimNode, idCounter: var int, res, component, documentNotUsed: NimNode) =
   inc idCounter
   let prcId = ident("prc" & $idCounter)
   let fragmentId = ident("fragment" & $idCounter)
   let componentId = ident("cbstore" & $idCounter)
   let condId = ident("cond" & $idCounter)
   let fragId = ident("frag" & $idCounter)
+  let document = ident("document" & $idCounter)
+  let getDocument = bindSym"document"
   let cond = derive(n[^2])
   res.add quote do:
     let `condId` = `cond`
@@ -240,20 +261,20 @@ proc processForStmt(n, parentId: NimNode, idCounter: var int, res, component, do
     newFor.add(n[i])
   newFor.add(newCall(bindSym"value", condId))
 
-  # for i in 1 ..< n.len:
   let body = newNimNode(nnkStmtList)
   processHtmlElements(n[^1], fragmentId, idCounter, body, componentId, document)
-  # newFor.add(body)
-  newFor.add(makeCaptureForForStmt(n, body))
+  newFor.add(makeCaptureForForStmt(n, body, fragmentId, document))
 
   res.add quote do:
     let `componentId` = newCallbackStore(`component`)
     let `fragId` = newFragId()
+    let newParent = `parentId`.store()
     proc `prcId`() {.gcsafe.} =
       `componentId`.clear()
+      let `document` = `getDocument`()
       let `fragmentId` = `document`.createDocumentFragment()
       `newFor`
-      applyFragment(`parentId`, `fragmentId`, `fragId`)
+      applyFragment(newParent, `fragmentId`, `fragId`)
     `prcId`()
     `component`.subscriptions.add `condId`.subscribe(`prcId`)
 
@@ -362,7 +383,7 @@ proc processSubComponent(n, parentId: NimNode, idCounter: var int, res, componen
         bindAttributeWrite(`id`.`attrName`, `attrValue`, `component`)
 
   res.add quote do:
-    `id`.renderHtml(`component`, `parentId`, `document`)
+    `id`.renderHtml(`component`, `parentId`)
 
 proc processTextElement(n, parentId: NimNode, idCounter: var int, res, component, document: NimNode) =
   n.expectLen(2)
@@ -467,9 +488,11 @@ proc processHtmlAux(b: NimNode): NimNode =
   let component = ident"component"
 
   processHtmlElements(b[1], root, idCounter, renderCode, component, document)
+  let docFn = bindSym"document"
 
   result = quote do:
-    theEnv.mRenderHtml = proc(`component`: CallbackStore, `root`: Node, `document`: Document) {.gcsafe.} =
+    theEnv.mRenderHtml = proc(`component`: CallbackStore, `root`: Node) {.gcsafe.} =
+      let `document` = `docFn`()
       `renderCode`
 
 var allCss {.compileTime.} = "_wafli{display:none;}"
@@ -565,10 +588,10 @@ proc writeCss(css: string) =
 var mainCallbackStore: CallbackStore
 
 
-proc renderHtml*(c: Component, store: CallbackStore, rootNode: Node, document: Document) =
+proc renderHtml*(c: Component, store: CallbackStore, rootNode: Node) =
   let rnd = c.mRenderHtml
   if not rnd.isNil:
-    rnd(store, rootNode, document)
+    rnd(store, rootNode)
 
 template renderMain*(c: untyped, rootNode: Node) =
   block:
@@ -576,7 +599,7 @@ template renderMain*(c: untyped, rootNode: Node) =
     if mainCallbackStore.isNil:
       mainCallbackStore = newCallbackStore()
     var comp = c()
-    renderHtml(comp, mainCallbackStore, rootNode, document())
+    renderHtml(comp, mainCallbackStore, rootNode)
 
 template renderMain*(c: untyped) =
   renderMain(c, document().body)

@@ -12,7 +12,7 @@ requires "nim >= 2.0"
 requires "yasync"
 requires "wasmrt"
 
-task test, "Build tests":
+task samples, "Build samples":
   for f in listFiles("tests"):
     let n = f[6 .. ^1]
     if n.startsWith("t") and n.endsWith(".nim"):
@@ -21,3 +21,11 @@ task test, "Build tests":
       # exec "wasm2wat " & n & ".wasm -o " & n[0 .. ^5] & ".wat"
   when defined(linux):
     try: exec "xdg-open test_all.html" except: discard
+
+task test, "Build and run tests":
+  for f in listFiles("tests"):
+    let n = f[6 .. ^1]
+    if n.startsWith("t") and n.endsWith(".nim"):
+      exec "nim c -d:wasm --out:" & n & ".wasm tests/" & n
+      exec "node tests/test_node_runner.js " & n & ".wasm"
+      # exec "wasm2wat " & n & ".wasm -o " & n[0 .. ^5] & ".wat"

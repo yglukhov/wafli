@@ -62,6 +62,11 @@ proc `=copy`*[T](a: var Reactive[T], b: Reactive[T]) =
   a.impl = b.impl
   inc a.impl.refCount
 
+proc `=dup`*[T](a: Reactive[T]): Reactive[T] =
+  result = a
+  if a.impl != nil:
+    inc a.impl.refCount
+
 proc dup*[T](a: Writable[T]): Writable[T] =
   inc a.impl.refCount
   Writable[T](impl: a.impl)
